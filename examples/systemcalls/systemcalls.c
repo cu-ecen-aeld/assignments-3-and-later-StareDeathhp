@@ -17,7 +17,14 @@ bool do_system(const char *cmd)
  *   or false() if it returned a failure
 */
 
-    return true;
+    int ret = system(cmd);
+
+    // Check if system() call was successful and if the command executed successfully
+    if (ret == -1) {
+        return false;
+    }
+
+    return WIFEXITED(ret) && WEXITSTATUS(ret) == 0;
 }
 
 /**
@@ -59,9 +66,33 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork failed");
+        va_end(args);
+        return false;
+    }
 
-    return true;
+    if (pid == 0) {
+        // Child process: Execute the command
+        execv(command[0], command);
+
+        // If execv returns, an error occurred
+        perror("execv failed");
+        _exit(EXIT_FAILURE);
+    } else {
+        // Parent process: Wait for the child to complete
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid failed");
+            va_end(args);
+            return false;
+        }
+
+        // Check if the child process terminated normally
+        va_end(args);
+        return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    }
 }
 
 /**
@@ -93,7 +124,47 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
-    va_end(args);
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork failed");
+        va_end(args);
+        return false;
+    }
 
-    return true;
+    if (pid == 0) {
+        // Child process: Redirect stdout to the output file
+        int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1) {
+            perror("open failed");
+            _exit(EXIT_FAILURE);
+        }
+
+        // Duplicate the file descriptor to standard output
+        if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("dup2 failed");
+            close(fd);
+            _exit(EXIT_FAILURE);
+        }
+
+        close(fd); // Close the file descriptor
+
+        // Execute the command
+        execv(command[0], command);
+
+        // If execv returns, an error occurred
+        perror("execv failed");
+        _exit(EXIT_FAILURE);
+    } else {
+        // Parent process: Wait for the child to complete
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid failed");
+            va_end(args);
+            return false;
+        }
+
+        // Check if the child process terminated normally
+        va_end(args);
+        return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    }
 }
