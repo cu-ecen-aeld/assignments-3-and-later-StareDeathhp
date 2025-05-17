@@ -1,80 +1,62 @@
-#!/bin/bash
-# Script outline to install and build kernel.
-# Author: Siddhant Jajoo.
+export CROSS_COMPILE=aarch64-linux-gnu-
 
+#!/usr/bin/env bash
 set -e
-set -u
 
-OUTDIR=/tmp/aeld
-KERNEL_REPO=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
-KERNEL_VERSION=v5.15.163
-BUSYBOX_VERSION=1_33_1
-FINDER_APP_DIR=$(realpath $(dirname $0))
-ARCH=arm64
-CROSS_COMPILE=aarch64-none-linux-gnu-
+# a) Xử lý argument
+OUTDIR=${1:-/tmp/aeld}
+OUTDIR=$(realpath "$OUTDIR")
 
-if [ $# -lt 1 ]
-then
-	echo "Using default directory ${OUTDIR} for output"
-else
-	OUTDIR=$1
-	echo "Using passed directory ${OUTDIR} for output"
+# b) Tạo thư mục OUTDIR
+mkdir -p "$OUTDIR"
+
+# c) Clone kernel nếu chưa có, checkout đúng tag
+if [ ! -d "$OUTDIR/linux" ]; then
+  git clone --depth 1 --branch v5.15 \
+    https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
+    "$OUTDIR/linux"
 fi
 
-mkdir -p ${OUTDIR}
+# d) Build kernel ARM64
+pushd "$OUTDIR/linux"
+make ARCH=arm64 defconfig
+make -j$(nproc) ARCH=arm64 Image
+popd
 
-cd "$OUTDIR"
-if [ ! -d "${OUTDIR}/linux-stable" ]; then
-    #Clone only if the repository does not exist.
-	echo "CLONING GIT LINUX STABLE VERSION ${KERNEL_VERSION} IN ${OUTDIR}"
-	git clone ${KERNEL_REPO} --depth 1 --single-branch --branch ${KERNEL_VERSION}
-fi
-if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
-    cd linux-stable
-    echo "Checking out version ${KERNEL_VERSION}"
-    git checkout ${KERNEL_VERSION}
+# e) Copy Image ra OUTDIR
+cp "$OUTDIR/linux/arch/arm64/boot/Image" "$OUTDIR/Image"
 
-    # TODO: Add your kernel build steps here
-fi
+# f) Tạo staging rootfs
+STAGING="$OUTDIR/rootfs"
+rm -rf "$STAGING"
+mkdir -p "$STAGING"{/bin,/dev,/proc,/sys,/home}
 
-echo "Adding the Image in outdir"
+# f.i) Copy writer (cross-compiled) và scripts, conf
+#    - Đảm bảo bạn đã build writer với CROSS_COMPILE trước đó
+cp finder-app/writer "$STAGING/home/"
+cp finder-app/finder.sh finder-app/conf/username.txt finder-app/conf/assignment.txt finder-app/finder-test.sh "$STAGING/home/"
+sed -i 's|\.\./conf/assignment.txt|conf/assignment.txt|' "$STAGING/home/finder-test.sh"
+cp finder-app/autorun-qemu.sh "$STAGING/home/"
 
-echo "Creating the staging directory for the root filesystem"
-cd "$OUTDIR"
-if [ -d "${OUTDIR}/rootfs" ]
-then
-	echo "Deleting rootfs directory at ${OUTDIR}/rootfs and starting over"
-    sudo rm  -rf ${OUTDIR}/rootfs
-fi
+# g) Tạo device nodes (tty, console)
+# h) Create a minimal init at the root of the ramfs
+cat > "$STAGING/init" << 'EOF'
+#!/bin/sh
+# optional: mount các pseudo-filesystems nếu cần
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
 
-# TODO: Create necessary base directories
+# chạy autorun script của bạn
+exec /home/autorun-qemu.sh
+EOF
+chmod +x "$STAGING/init"
 
-cd "$OUTDIR"
-if [ ! -d "${OUTDIR}/busybox" ]
-then
-git clone git://busybox.net/busybox.git
-    cd busybox
-    git checkout ${BUSYBOX_VERSION}
-    # TODO:  Configure busybox
-else
-    cd busybox
-fi
+# h) Đóng gói initramfs
+pushd "$STAGING"
+find . | cpio --quiet -H newc -o | gzip > "$OUTDIR/initramfs.cpio.gz"
+popd
 
-# TODO: Make and install busybox
-
-echo "Library dependencies"
-${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
-${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
-
-# TODO: Add library dependencies to rootfs
-
-# TODO: Make device nodes
-
-# TODO: Clean and build the writer utility
-
-# TODO: Copy the finder related scripts and executables to the /home directory
-# on the target rootfs
-
-# TODO: Chown the root directory
-
-# TODO: Create initramfs.cpio.gz
+echo "Done: OUTDIR is $OUTDIR"
+echo "  - Kernel: $OUTDIR/Image"
+echo "  - Initramfs: $OUTDIR/initramfs.cpio.gz"
