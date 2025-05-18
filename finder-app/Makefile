@@ -1,13 +1,11 @@
-CC       := $(CROSS_COMPILE)gcc
-CFLAGS   := -Wall -Werror -std=gnu99
+#CROSS_COMPILE=aarch64-none-linux-gnu-
+#CFLAGS=-Wall -Werror -pedantic -std=gnu99
+#CC=$(CROSS_COMPILE)gcc
 
-all: writer
+all: clean writer
 
-writer: writer.o
-	$(CC) $(CFLAGS) -o $@ $^
-
-writer.o: writer.c
-	$(CC) $(CFLAGS) -c writer.c
+writer: writer.c
+	$(CC) $(CFLAGS) -o writer writer.c
 
 clean:
-	rm -f writer *.o
+	rm -f writer.o writer *~
