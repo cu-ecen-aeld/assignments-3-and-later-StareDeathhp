@@ -5,11 +5,18 @@
 set -e
 set -u
 
-CURRDIR=$(dirname "$0")
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
-# username=$(cat /etc/finder-app/conf/username.txt)
+# username=$(cat conf/username.txt)			#remove conf
+username=$(cat username.txt)
+
+# make -f finder-app/Makefile clean
+# make -f finder-app/Makefile build
+# make -d clean
+# make -d build
+# make clean		#clean the previous builds
+# make build		#compile and build
 
 if [ $# -lt 3 ]
 then
@@ -33,7 +40,11 @@ echo "Writing ${NUMFILES} files containing string ${WRITESTR} to ${WRITEDIR}"
 rm -rf "${WRITEDIR}"
 
 # create $WRITEDIR if not assignment1
-# assignment=`cat /etc/finder-app/conf/assignment.txt`
+# assignment=`cat ../conf/assignment.txt`			#maybe conf is to specific?
+
+assignment=$(cat assignment.txt)
+
+
 
 if [ $assignment != 'assignment1' ]
 then
@@ -50,12 +61,29 @@ then
 	fi
 fi
 #echo "Removing the old writer utility and compiling as a native application"
-#make clean
-#make
+# make clean
+# make build
+# make CROSS_COMPILE	#this should handle cross compile
 
 for i in $( seq 1 $NUMFILES)
 do
-    $CURRDIR/writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+	./writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
-$CURRDIR/finder.sh "$WRITEDIR" "$WRITESTR" > /tmp/assignment4-result.txt
+OUTPUTSTRING=$(./finder.sh "$WRITEDIR" "$WRITESTR")
+
+# Write output to required result file
+echo "$OUTPUTSTRING" > /tmp/assignment4-result.txt
+
+# remove temporary directories
+rm -rf /tmp/aeld-data
+
+set +e
+echo ${OUTPUTSTRING} | grep "${MATCHSTR}"
+if [ $? -eq 0 ]; then
+	echo "success"
+	exit 0
+else
+	echo "failed: expected  ${MATCHSTR} in ${OUTPUTSTRING} but instead found"
+	exit 1
+fi

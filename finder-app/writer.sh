@@ -1,26 +1,14 @@
-#!/bin/bash
+#!/bin/sh
+if [ $# = 2 ]
+then
+	
+	mkdir -p "$(dirname "$1")"
+	echo "$2" > "$1"
+	exit 0
 
-if ["$#" -ne 2]; then
-    echo "Error: Two arguments required."
-    echo "Usage: $0 <writefile> <writestr"
-    exit 1
+		
+else
+	echo "ERROR: Invalid Number of Arguments. \r\n Total number of arguments should be 2."
+	exit 1
+
 fi
-
-writefile=$1
-writestr=$2
-
-writedir=$(dirname "$writefile")
-
-if ! mkdir -p "$writedir"; then
-    echo "Error: Could not create directory path $writedir."
-    exit 1
-fi
-
-if ! echo "$writestr" > "$writefile"; then
-    echo "Error: Could not write to file $writefile."
-    exit 1
-fi
-
-echo "Successfully wrote to file $writefile"
-
-exit 0
